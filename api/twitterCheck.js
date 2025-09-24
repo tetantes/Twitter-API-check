@@ -2,56 +2,86 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
-  const { username } = req.query; // username from Telegram bot
-  const CEO_ACCOUNT = "LordZurel";
-  const COFOUNDER_ACCOUNT = "SteveAshers";
+  const { username } = req.query;
+  const CEO = "LordZurel";
+  const CO = "SteveAshers";
+
+  if (!username) {
+    return res.status(400).json({ success: false, error: "Missing username" });
+  }
+
+  // Remove @ if user included it
+  const cleanName = username.startsWith("@") ? username.slice(1) : username;
 
   try {
-    // Step 1: Get user ID
-    const userRes = await fetch(`https://api.twitter.com/2/users/by/username/${username}`, {
-      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
-    });
-    const userData = await userRes.json();
+    // 1. Lookup user
+    const userResp = await fetch(
+      `https://api.twitter.com/2/users/by/username/${cleanName}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}`,
+        },
+      }
+    );
+    const userJson = await userResp.json();
 
-    if (!userData.data) {
+    if (!userJson.data) {
+      // Could be an error or account blocked / invalid
       return res.status(400).json({ success: false, error: "Invalid username" });
     }
 
-    const userId = userData.data.id;
+    const userId = userJson.data.id;
 
-    // Step 2: Check following (with pagination)
+    // 2. Try checking following list with pagination
     let followsCEO = false;
-    let followsCOO = false;
+    let followsCO = false;
     let nextToken = null;
 
     do {
-      const url = new URL(`https://api.twitter.com/2/users/${userId}/following`);
-      url.searchParams.set("max_results", "1000");
-      if (nextToken) url.searchParams.set("pagination_token", nextToken);
-
-      const followRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
-      });
-      const followData = await followRes.json();
-
-      if (followData.data) {
-        followsCEO ||= followData.data.some(acc => acc.username === CEO_ACCOUNT);
-        followsCOO ||= followData.data.some(acc => acc.username === COFOUNDER_ACCOUNT);
+      let url = `https://api.twitter.com/2/users/${userId}/following?max_results=1000`;
+      if (nextToken) {
+        url += `&pagination_token=${nextToken}`;
       }
 
-      nextToken = followData.meta?.next_token || null;
-    } while ((!followsCEO || !followsCOO) && nextToken);
+      const fResp = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}`,
+        },
+      });
+      const fJson = await fResp.json();
 
-    // Step 3: Response
-    res.status(200).json({
+      if (fJson.data) {
+        for (const acc of fJson.data) {
+          if (acc.username.toLowerCase() === CEO.toLowerCase()) {
+            followsCEO = true;
+          }
+          if (acc.username.toLowerCase() === CO.toLowerCase()) {
+            followsCO = true;
+          }
+        }
+      }
+
+      nextToken = fJson.meta?.next_token;
+
+      // stop early if both found
+      if (followsCEO && followsCO) break;
+
+    } while (nextToken);
+
+    const verified = followsCEO && followsCO;
+
+    return res.status(200).json({
       success: true,
-      username,
+      username: cleanName,
       followsCEO,
-      followsCOO,
-      verified: followsCEO && followsCOO
+      followsCO,
+      verified,
     });
 
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("Error in twitterCheck:", err);
+    return res
+      .status(500)
+      .json({ success: false, error: "Server error: " + err.message });
   }
 }
