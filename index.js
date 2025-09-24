@@ -28,8 +28,14 @@ app.get("/twitterCheck", async (req, res) => {
     });
     const followData = await followRes.json();
 
-    const followsCEO = followData.data?.some(acc => acc.username === CEO_ACCOUNT) || false;
-    const followsCOO = followData.data?.some(acc => acc.username === COFOUNDER_ACCOUNT) || false;
+    // ✅ Case-insensitive match
+    const followsCEO = followData.data?.some(
+      acc => acc.username.toLowerCase() === CEO_ACCOUNT.toLowerCase()
+    ) || false;
+
+    const followsCOO = followData.data?.some(
+      acc => acc.username.toLowerCase() === COFOUNDER_ACCOUNT.toLowerCase()
+    ) || false;
 
     res.json({
       success: true,
