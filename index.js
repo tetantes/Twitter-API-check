@@ -1,19 +1,21 @@
-import express from "express";
+// api/twitterCheck.js
 import fetch from "node-fetch";
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get("/twitterCheck", async (req, res) => {
-  const { username } = req.query;
+export default async function handler(req, res) {
+  const { username } = req.query; 
   const CEO_ACCOUNT = "LordZurel";
   const COFOUNDER_ACCOUNT = "SteveAshers";
 
   try {
-    // 1️⃣ Get user ID by username
+    // Step 1: Get user ID from username
     const userRes = await fetch(`https://api.twitter.com/2/users/by/username/${username}`, {
-      headers: { "Authorization": `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
+      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
     });
+    
+    if (!userRes.ok) {
+      return res.status(400).json({ success: false, error: "Invalid username or API error" });
+    }
+    
     const userData = await userRes.json();
 
     if (!userData.data) {
@@ -22,31 +24,52 @@ app.get("/twitterCheck", async (req, res) => {
 
     const userId = userData.data.id;
 
-    // 2️⃣ Get accounts the user follows
-    const followRes = await fetch(`https://api.twitter.com/2/users/${userId}/following?max_results=1000`, {
-      headers: { "Authorization": `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
+    // Step 2: Get IDs of CEO and Co-founder
+    const ceoRes = await fetch(`https://api.twitter.com/2/users/by/username/${CEO_ACCOUNT}`, {
+      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
     });
-    const followData = await followRes.json();
+    
+    if (!ceoRes.ok) {
+      return res.status(500).json({ success: false, error: "Error fetching CEO account" });
+    }
+    
+    const ceoData = await ceoRes.json();
+    const ceoId = ceoData.data.id;
 
-    // ✅ Case-insensitive match
-    const followsCEO = followData.data?.some(
-      acc => acc.username.toLowerCase() === CEO_ACCOUNT.toLowerCase()
-    ) || false;
+    const cooRes = await fetch(`https://api.twitter.com/2/users/by/username/${COFOUNDER_ACCOUNT}`, {
+      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
+    });
+    
+    if (!cooRes.ok) {
+      return res.status(500).json({ success: false, error: "Error fetching Co-founder account" });
+    }
+    
+    const cooData = await cooRes.json();
+    const cooId = cooData.data.id;
 
-    const followsCOO = followData.data?.some(
-      acc => acc.username.toLowerCase() === COFOUNDER_ACCOUNT.toLowerCase()
-    ) || false;
+    // Step 3: Check if user follows CEO
+    const followCEO = await fetch(`https://api.twitter.com/2/users/${userId}/following?target_user_id=${ceoId}`, {
+      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
+    });
+    
+    const followsCEO = followCEO.status === 200;
 
-    res.json({
+    // Step 4: Check if user follows Co-founder
+    const followCOO = await fetch(`https://api.twitter.com/2/users/${userId}/following?target_user_id=${cooId}`, {
+      headers: { Authorization: `Bearer ${process.env.TWITTER_BEARER_TOKEN}` }
+    });
+    
+    const followsCOO = followCOO.status === 200;
+
+    return res.status(200).json({
       success: true,
       username,
       followsCEO,
       followsCOO,
       verified: followsCEO && followsCOO
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
