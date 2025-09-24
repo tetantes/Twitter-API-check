@@ -1,0 +1,12 @@
+{
+  "name": "twitter-api-check",
+  "version": "1.0.0",
+  "main": "api/twitterCheck.js",
+  "type": "module",
+  "scripts": {
+    "start": "node api/twitterCheck.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
